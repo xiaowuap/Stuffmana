@@ -1,14 +1,16 @@
 import base64
-from flask import request, jsonify
+from flask import request, jsonify, current_app
 from functools import wraps
 from passlib.hash import bcrypt
 from db import create_connection
 
+from config import ALLOWED_EXTENSIONS
+
+def allowed_file(filename):
+    return '.' in filename and \
+           filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
 def parse_auth_header():
-    """
-    从请求头中解析出用户名和密码 (Basic Auth)
-    返回 (username, password) 或 None
-    """
     auth_header = request.headers.get('Authorization')
     if not auth_header:
         return None
@@ -26,21 +28,7 @@ def parse_auth_header():
     except Exception:
         return None
 
-def verify_user(username, plain_password):
-    """
-    验证用户名+明文密码是否正确
-    """
-    # 这里的 get_user_by_username 同样可以放在这里，或者另外一个 users 模块
-    user = get_user_by_username(username)
-    if not user:
-        return False
-    hashed_password = user["password"]  
-    return bcrypt.verify(plain_password, hashed_password)
-
 def get_user_by_username(username):
-    """
-    根据用户名获取用户记录，返回 dict 或 None
-    """
     try:
         conn = create_connection()
         cursor = conn.cursor(dictionary=True)
@@ -52,10 +40,14 @@ def get_user_by_username(username):
     except:
         return None
 
+def verify_user(username, plain_password):
+    user = get_user_by_username(username)
+    if not user:
+        return False
+    hashed_password = user["password"]
+    return bcrypt.verify(plain_password, hashed_password)
+
 def basic_auth_required(f):
-    """
-    装饰器：在需要鉴权的接口上使用
-    """
     @wraps(f)
     def decorated(*args, **kwargs):
         creds = parse_auth_header()
